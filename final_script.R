@@ -1,4 +1,4 @@
-setwd("~/Linj?ra statistiska modeller/Project")
+#setwd("~/Linj?ra statistiska modeller/Project")
 #################################################
 # Categorical: state, region (West=4 baseline)
 # Correlated: crimes, popul
@@ -24,11 +24,11 @@ data$crm1000 <- crm1000
 # Training and test set
 ################################################
 
-totalSample <- dim(data)[1]
-p1 <- 0.7*totalSample
+N <- dim(data)[1]
+p1 <- 0.7*N
 
 set.seed(42)
-ii <- sample(seq(1,dim(data)[1]),p1)
+ii <- sample(seq(1,N),p1)
 train <- data[ii,] # select a random subset of your full dataset for training
 test <- data[-ii,] # select the rest for testing
 
@@ -52,10 +52,42 @@ data$region <- factor(data$region,label=c("Northeast","Midwest","South","West"))
 data$region <- relevel(data$region, ref="West")
 
 ################################################
+# Plots to evaluate which variables to transform
+################################################
+
+#Plots all variables with transforms and without log-transform with crm1000 on y-axis
+#in different plots. The plots are saved to a folder figures
+for (i in 1:dim(data)[2]){
+  jpeg(file = paste("figures/plot",colnames(data)[i],sep="_"))
+  par(mfrow=c(2,2))
+  plot(data[,i], data$crm1000)
+  plot(log(data[,i]), data$crm1000)
+  plot(data[,i], log(data$crm1000))
+  plot(log(data[,i]), log(data$crm1000))
+  dev.off()
+}
+
+
+################################################
+# Transformation of variables
+################################################
+
+variablesToTransform <- c()
+
+data3 <- data
+for (i in 1:length(variablesToTransform)){
+  ind <- grep(variablesToTransform[i], colnames(data3), fixed=TRUE)
+  #Adding adding transform to name to minimize confusion
+  colnames(data3)[ind] <- paste("log(",colnames(data3)[ind] ,")", sep = "")
+  data3[,ind] <- log(data3[,ind])
+}
+
+################################################
 # Model
 ################################################
 
-mm1 <- lm(log(crm1000) ~ ., data=data)
+#Naive model containing all variables of the dataset
+mm1 <- lm(log(crm1000) ~ ., data=train)
 summary(mm1)
 
 ################################################
@@ -69,16 +101,5 @@ mm3 <- lm(formula = log(crm1000) ~ pop1834 + pop65plus + beds + crimes +
           data = data)
 summary(mm3)
 
-################################################
-# Transformation of variables
-################################################
 
-variablesToTransform <- c()
-
-data3 <- data
-for (i in 1:length(variablesToTransform)){
-  ind <- grep(variablesToTransform[i], colnames(data3), fixed=TRUE)
-  colnames(data3)[ind] <- paste("log(",colnames(data3)[ind],")")
-  data3[,ind] <- log(data3[,ind])
-}
 
