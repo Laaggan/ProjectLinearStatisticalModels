@@ -39,6 +39,7 @@ no_use2 <- c(grep("state", colnames(data)),
              grep("popul", colnames(data)), 
              grep("crimes", colnames(data)),
              grep("totalincome", colnames(data)))
+
 data2 <- data[,-no_use2]
 
 corrplot(cor(data)) # data2
