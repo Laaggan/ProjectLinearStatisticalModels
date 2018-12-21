@@ -21,6 +21,14 @@ crm1000 <- 1000*(data$crimes/data$popul)
 data$crm1000 <- crm1000
 
 ################################################
+# Categorical data
+################################################
+
+#Setting the new labels as factors
+data$region <- factor(data$region,label=c("Northeast","Midwest","South","West"))
+data$region <- relevel(data$region, ref="West")
+
+################################################
 # Training and test set
 ################################################
 
@@ -45,14 +53,6 @@ data2 <- data[,-no_use2]
 corrplot(cor(data)) # data2
 
 ################################################
-# Categorical data
-################################################
-
-#Setting the new labels as factors
-data$region <- factor(data$region,label=c("Northeast","Midwest","South","West"))
-data$region <- relevel(data$region, ref="West")
-
-################################################
 # Plots to evaluate which variables to transform
 ################################################
 
@@ -73,7 +73,7 @@ for (i in 1:dim(data)[2]){
 # Transformation of variables
 ################################################
 
-variablesToTransform <- c()
+variablesToTransform <- c("area", "popul", )
 
 data3 <- data
 for (i in 1:length(variablesToTransform)){
