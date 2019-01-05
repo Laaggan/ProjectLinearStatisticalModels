@@ -1,6 +1,7 @@
 #setwd("~/Linj?ra statistiska modeller/Project/ProjektLinear")
 library(leaps)
 library(corrplot)
+par(mar=c(5.1, 4.1, 4.1, 2.1))
 #################################################
 # Categorical: state, region (West=4 baseline)
 # Correlated: crimes, popul
@@ -88,11 +89,15 @@ for (i in 1:length(variablesToTransform)){
 ################################################
 no_use3 <- c(grep("popul", colnames(data)),
              grep("crimes", colnames(data)),
-             grep("beds", colnames(data)),
-             grep("bachelors", colnames(data)),
-             grep("totalincome", colnames(data)),
              grep("region", colnames(data)))
 data <- data[,-no_use3]
+
+################################################
+# Remove outliers
+################################################
+outliers <- c(362,427)
+ind <- which(rownames(train)==1) # locate outlier
+train <- train[-c(ind),] #exclude coumns without numerical values
 
 ################################################
 # Training and test set
@@ -112,21 +117,20 @@ row.names(test)<-seq(1,dim(test)[1])
 ################################################
 # Model
 ################################################
+pMSE <- function(yHat, y){
+  return((length(yHat)^-1)*sum((yHat-y)^2))
+}
 
 #Naive model containing all variables of the dataset
 mm1 <- lm(crm1000 ~ . , data=train) #, subset=-c(292,124)
 summary(mm1)
-par(mfrow=c(2,2))
+par(mfrow=c(2,2)) 
 plot(mm1)
 
-################################################
-# Remove outliers
-################################################
-
-outliers <- c(362,427)
-ind <- which(rownames(train)==1) # locate outlier
-train <- train[-c(ind),] #exclude coumns without numerical values
-
+yPred1 <- predict(mm1, test)
+pMSE1 <- pMSE(yPred1, test$crm1000)
+par(mfrow=c(1,1))
+plot(yPred1, test$crm1000, xlim=c(0,300), ylim=c(0,300))
 
 ################################################
 # Backward model selection
@@ -134,9 +138,15 @@ train <- train[-c(ind),] #exclude coumns without numerical values
 
 mm2 <- step(mm1,directions="backward") # backward selection
 
-mm3 <- lm(formula(mm2), data = train[-c(1, 2, 3, 4, 5, 6),])
+mm3 <- lm(formula(mm2), data = train)
 summary(mm3)
+par(mfrow=c(2,2)) 
 plot(mm3)
+
+yPred3 <- predict(mm3, test)
+pMSE3 <- pMSE(yPred3, test$crm1000)
+par(mfrow=c(1,1))
+plot(yPred3, test$crm1000, xlim=c(0,300), ylim=c(0,300))
 
 ################################################
 # Model selection with lowest predictive MSE
@@ -152,8 +162,7 @@ xxt <- test[,-crmInd]
 ##################################################
 #Perform exhaustive search for model
 ##################################################
-#rleaps<-regsubsets(x=xx,y=yy,int=T,nbest=1,nvmax=dim(xx)[2],really.big=T,method=c("exhaustive")) ## all subset models
-rleaps<-regsubsets(x=xx,y=yy,int=T,nbest=10,nvmax=dim(train)[2],really.big=T,method=c("ex"))
+rleaps<-regsubsets(x=xx,y=yy,int=T,nbest=1000,nvmax=dim(train)[2],really.big=T,method=c("ex"))## all subset models
 cleaps<-summary(rleaps,matrix=T) ## True/False matrix. The r-th is a True/False statement about which
 ## variables are included in model r.
 tt<-apply(cleaps$which,1,sum) ## size of each model in the matrix
@@ -163,6 +172,7 @@ tt<-c(1,tt)
 nullrss<-sum((yy-mean(yy))^2)/length(yy)
 mses<-c(nullrss,mses)
 ###
+par(mfrow=c(1,1))
 plot(tt,mses,xlab="number of parameters",ylab="RSS/n",main="RSS/n for all subset models")
 tmin<-min(tt)
 tmax<-max(tt)
@@ -183,6 +193,7 @@ plot(tsec,msevec,xlab="number of parameters",ylab="MSE",main="MSE for best model
 ### code chunk number 7: l6-pmsefig
 ###################################################
 pmses<-rep(0,dim(cleaps$which)[1])
+bestPMSE <- Inf
 for (ta in (1:dim(cleaps$which)[1])) {
   # select covariates in training data for current model 
   # -1 removes the intercep stored in cleaps
@@ -193,8 +204,14 @@ for (ta in (1:dim(cleaps$which)[1])) {
   # predict the outcome of the new data from testing covariates
   yhat <- predict(mmr, as.data.frame(x))
   # mmr<-lm(yy ~ xx[,cleaps$which[ta,-1]==T])
+  #PEcp <- pMSE(yhat, yyt)
   PEcp<-sum((yyt-yhat)^2)/length(yyt)
   pmses[ta]<-PEcp 
+  if (PEcp < bestPMSE){
+    bestPMSE <- PEcp
+    mm4 <-mmr
+    yPred4 <- yhat
+  }
 }
 nullpmse<-sum((yyt-mean(yy))^2)/length(yyt)
 pmses<-c(nullpmse,pmses)
@@ -207,6 +224,7 @@ plot(tsec,pmsevec,xlab="number of parameters",ylab="pMSE",main="prediction MSE",
 ###################################################
 ### code chunk number 8: l6-whichwin
 ###################################################
+#index of least pMSE
 ptmin<-which.min(pmses)
 ModMat<-rbind(c("TRUE",rep("FALSE",dim(cleaps$which)[2]-1)),cleaps$which)
 pmod<-ModMat[ptmin,] # this is the best model for prediction (on THIS test data)
@@ -214,6 +232,9 @@ winsize<-sum(pmod==T)
 mtmin<-which.min(mses[tt==sum(pmod==T)])
 mod<-(ModMat[tt==sum(pmod==T),])[mtmin,] # best training model of the same size and pmod. Same model?
 
+#mm4 and yPred4 is created in the loop above
+plot(yPred4, test$crm1000, xlim=c(0,300), ylim=c(0,300))
 
+print(c(pMSE4, min(pmsevec)))
 
 
