@@ -9,7 +9,6 @@ par(mar=c(5.1, 4.1, 4.1, 2.1))
 #################################################
 # Load and create data set
 #################################################
-
 data<-read.table("data18.txt")
 colnames(data)<-c("id","county","state","area","popul","pop1834","pop65plus","phys",
                   "beds","crimes","higrads","bachelors","poors","unemployed",
@@ -17,6 +16,9 @@ colnames(data)<-c("id","county","state","area","popul","pop1834","pop65plus","ph
 
 crm1000 <- 1000*(data$crimes/data$popul)
 data$crm1000 <- crm1000
+
+#From naive model Kings county has a too high value cooks distance
+data <- data[-6,]
 
 #Remove unwanted covariates
 no_use <- c(grep("id", colnames(data)),
@@ -37,6 +39,17 @@ no_use2 <- c(#Why do we remove "totalincome"?
 data2 <- data[,-no_use2]
 
 corrplot(cor(data2)) # data2
+################################################
+# Boxplot
+################################################
+#Boxplot as potential outlier removal
+scaledData <- scale(data)
+boxplot(scaledData)
+
+#lines showing n standard-standard deviations
+n <- 5
+abline(n,0)
+abline(-n,0)
 
 ################################################
 # Categorical data
@@ -75,7 +88,8 @@ for (i in 1:dim(data)[2]){
 ################################################
 # Transformation of variables
 ################################################
-variablesToTransform <- c("area","popul","phys","beds","crimes","poors","totalincome")
+variablesToTransform <- c("area","pop65plus","phys","beds","poors","totalincome")
+#area, pop65plus, phys,beds, poors totalincome
 
 for (i in 1:length(variablesToTransform)){
   ind <- grep(variablesToTransform[i], colnames(data), fixed=TRUE)
@@ -91,13 +105,6 @@ no_use3 <- c(grep("popul", colnames(data)),
              grep("crimes", colnames(data)),
              grep("region", colnames(data)))
 data <- data[,-no_use3]
-
-################################################
-# Remove outliers
-################################################
-outliers <- c(362,427)
-ind <- which(rownames(train)==1) # locate outlier
-train <- train[-c(ind),] #exclude coumns without numerical values
 
 ################################################
 # Training and test set
@@ -130,7 +137,9 @@ plot(mm1)
 yPred1 <- predict(mm1, test)
 pMSE1 <- pMSE(yPred1, test$crm1000)
 par(mfrow=c(1,1))
-plot(yPred1, test$crm1000, xlim=c(0,300), ylim=c(0,300))
+maxVal = max(test$crm1000)
+plot(yPred1, test$crm1000, xlim=c(0,maxVal), ylim=c(0,maxVal))
+abline(0,1)
 
 ################################################
 # Backward model selection
@@ -146,7 +155,8 @@ plot(mm3)
 yPred3 <- predict(mm3, test)
 pMSE3 <- pMSE(yPred3, test$crm1000)
 par(mfrow=c(1,1))
-plot(yPred3, test$crm1000, xlim=c(0,300), ylim=c(0,300))
+plot(yPred3, test$crm1000,, xlim=c(0,maxVal), ylim=c(0,maxVal))
+abline(0,1)
 
 ################################################
 # Model selection with lowest predictive MSE
@@ -203,9 +213,7 @@ for (ta in (1:dim(cleaps$which)[1])) {
   x <- as.matrix(xxt[, cleaps$which[ta,-1]]) # TESTING covariates
   # predict the outcome of the new data from testing covariates
   yhat <- predict(mmr, as.data.frame(x))
-  # mmr<-lm(yy ~ xx[,cleaps$which[ta,-1]==T])
-  #PEcp <- pMSE(yhat, yyt)
-  PEcp<-sum((yyt-yhat)^2)/length(yyt)
+  PEcp <- pMSE(yhat, yyt)
   pmses[ta]<-PEcp 
   if (PEcp < bestPMSE){
     bestPMSE <- PEcp
@@ -233,8 +241,15 @@ mtmin<-which.min(mses[tt==sum(pmod==T)])
 mod<-(ModMat[tt==sum(pmod==T),])[mtmin,] # best training model of the same size and pmod. Same model?
 
 #mm4 and yPred4 is created in the loop above
-plot(yPred4, test$crm1000, xlim=c(0,300), ylim=c(0,300))
+plot(yPred4, test$crm1000, , xlim=c(0,maxVal), ylim=c(0,maxVal))
+abline(0,1)
 
-print(c(pMSE4, min(pmsevec)))
+print(c(bestPMSE, min(pmsevec)))
+
+###################################################
+### GLM
+###################################################
+
+
 
 
