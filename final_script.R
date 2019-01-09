@@ -1,6 +1,7 @@
 #setwd("~/Linj?ra statistiska modeller/Project/ProjektLinear")
 library(leaps)
 library(corrplot)
+par(mar=c(5.1, 4.1, 4.1, 2.1))
 #################################################
 # Categorical: state, region (West=4 baseline)
 # Correlated: crimes, popul
@@ -16,6 +17,9 @@ colnames(data)<-c("id","county","state","area","popul","pop1834","pop65plus","ph
 
 crm1000 <- 1000*(data$crimes/data$popul)
 data$crm1000 <- crm1000
+
+#From naive model Kings county has a too high value cooks distance
+data <- data[-6,]
 
 #Remove unwanted covariates
 no_use <- c(grep("id", colnames(data)),
@@ -36,6 +40,17 @@ no_use2 <- c(#Why do we remove "totalincome"?
 data2 <- data[,-no_use2]
 
 corrplot(cor(data2)) # data2
+################################################
+# Boxplot
+################################################
+#Boxplot as potential outlier removal
+scaledData <- scale(data)
+boxplot(scaledData)
+
+#lines showing n standard-standard deviations
+n <- 5
+abline(n,0)
+abline(-n,0)
 
 ################################################
 # Categorical data
@@ -74,7 +89,8 @@ for (i in 1:dim(data)[2]){
 ################################################
 # Transformation of variables
 ################################################
-variablesToTransform <- c("area","popul","phys","beds","crimes","poors","totalincome")
+variablesToTransform <- c("area","pop65plus","phys","beds","poors","totalincome")
+#area, pop65plus, phys,beds, poors totalincome
 
 for (i in 1:length(variablesToTransform)){
   ind <- grep(variablesToTransform[i], colnames(data), fixed=TRUE)
@@ -88,9 +104,6 @@ for (i in 1:length(variablesToTransform)){
 ################################################
 no_use3 <- c(grep("popul", colnames(data)),
              grep("crimes", colnames(data)),
-             grep("beds", colnames(data)),
-             grep("bachelors", colnames(data)),
-             grep("totalincome", colnames(data)),
              grep("region", colnames(data)))
 data <- data[,-no_use3]
 
@@ -221,5 +234,144 @@ for (n in 0:(K-1)){
     mod<-(ModMat[tt==sum(pmod==T),])[mtmin,] # best training model of the same size and pmod. Same model?
   }
 }
+=======
+ii <- sample(seq(1,N),p1)
+train <- data[ii,] # select a random subset of your full dataset for training
+test <- data[-ii,] # select the rest for testing
+
+row.names(train)<-seq(1,dim(train)[1]) # assign new IDs to each row (1,2,3 osv
+row.names(test)<-seq(1,dim(test)[1])
+
+################################################
+# Model
+################################################
+pMSE <- function(yHat, y){
+  return((length(yHat)^-1)*sum((yHat-y)^2))
+}
+
+#Naive model containing all variables of the dataset
+mm1 <- lm(crm1000 ~ . , data=train) #, subset=-c(292,124)
+summary(mm1)
+par(mfrow=c(2,2)) 
+plot(mm1)
+
+yPred1 <- predict(mm1, test)
+pMSE1 <- pMSE(yPred1, test$crm1000)
+par(mfrow=c(1,1))
+maxVal = max(test$crm1000)
+plot(yPred1, test$crm1000, xlim=c(0,maxVal), ylim=c(0,maxVal))
+abline(0,1)
+
+################################################
+# Backward model selection
+################################################
+
+mm2 <- step(mm1,directions="backward") # backward selection
+
+mm3 <- lm(formula(mm2), data = train)
+summary(mm3)
+par(mfrow=c(2,2)) 
+plot(mm3)
+
+yPred3 <- predict(mm3, test)
+pMSE3 <- pMSE(yPred3, test$crm1000)
+par(mfrow=c(1,1))
+plot(yPred3, test$crm1000,, xlim=c(0,maxVal), ylim=c(0,maxVal))
+abline(0,1)
+
+################################################
+# Model selection with lowest predictive MSE
+################################################
+crmInd <- which(colnames(train) == "crm1000")
+
+yy <- train[,crmInd]
+xx <- train[,-crmInd]
+
+yyt <- test[,crmInd]
+xxt <- test[,-crmInd]
+
+##################################################
+#Perform exhaustive search for model
+##################################################
+rleaps<-regsubsets(x=xx,y=yy,int=T,nbest=1000,nvmax=dim(train)[2],really.big=T,method=c("ex"))## all subset models
+cleaps<-summary(rleaps,matrix=T) ## True/False matrix. The r-th is a True/False statement about which
+## variables are included in model r.
+tt<-apply(cleaps$which,1,sum) ## size of each model in the matrix
+mses<-cleaps$rss/length(yy) ## corresponding MSEs
+##
+tt<-c(1,tt)
+nullrss<-sum((yy-mean(yy))^2)/length(yy)
+mses<-c(nullrss,mses)
+###
+par(mfrow=c(1,1))
+plot(tt,mses,xlab="number of parameters",ylab="RSS/n",main="RSS/n for all subset models")
+tmin<-min(tt)
+tmax<-max(tt)
+tsec<-seq(tmin,tmax)
+msevec<-rep(0,length(tsec))
+for (tk in 1:length(tsec)) {
+  msevec[tk]<-min(mses[tt==tsec[tk]])} ## the best model for each size
+lines(tsec,msevec,lwd=2,col=2) ## a line connecting the best models.
+
+
+###################################################
+### code chunk number 6: l6-msefig
+###################################################
+plot(tsec,msevec,xlab="number of parameters",ylab="MSE",main="MSE for best model of each size",type='b',col=4,lwd=2)
+# Just plotting the best model of each size
+
+###################################################
+### code chunk number 7: l6-pmsefig
+###################################################
+pmses<-rep(0,dim(cleaps$which)[1])
+bestPMSE <- Inf
+for (ta in (1:dim(cleaps$which)[1])) {
+  # select covariates in training data for current model 
+  # -1 removes the intercep stored in cleaps
+  x <- as.matrix(xx[, cleaps$which[ta,-1]]) # TRAINING covariates
+  mmr <- lm(yy ~ x)  # fit training data
+  # now select same covariates in test data
+  x <- as.matrix(xxt[, cleaps$which[ta,-1]]) # TESTING covariates
+  # predict the outcome of the new data from testing covariates
+  yhat <- predict(mmr, as.data.frame(x))
+  PEcp <- pMSE(yhat, yyt)
+  pmses[ta]<-PEcp 
+  if (PEcp < bestPMSE){
+    bestPMSE <- PEcp
+    mm4 <-mmr
+    yPred4 <- yhat
+  }
+}
+nullpmse<-sum((yyt-mean(yy))^2)/length(yyt)
+pmses<-c(nullpmse,pmses)
+pmsevec<-rep(0,length(tsec))
+for (tk in 1:length(tsec)) {
+  pmsevec[tk]<-min(pmses[tt==tsec[tk]])}
+plot(tsec,pmsevec,xlab="number of parameters",ylab="pMSE",main="prediction MSE", type="b",lwd=2,col=2)
+# best prediction model of each size
+
+###################################################
+### code chunk number 8: l6-whichwin
+###################################################
+#index of least pMSE
+ptmin<-which.min(pmses)
+ModMat<-rbind(c("TRUE",rep("FALSE",dim(cleaps$which)[2]-1)),cleaps$which)
+pmod<-ModMat[ptmin,] # this is the best model for prediction (on THIS test data)
+winsize<-sum(pmod==T)
+mtmin<-which.min(mses[tt==sum(pmod==T)])
+mod<-(ModMat[tt==sum(pmod==T),])[mtmin,] # best training model of the same size and pmod. Same model?
+
+#mm4 and yPred4 is created in the loop above
+plot(yPred4, test$crm1000, , xlim=c(0,maxVal), ylim=c(0,maxVal))
+abline(0,1)
+
+print(c(bestPMSE, min(pmsevec)))
+
+###################################################
+### GLM
+###################################################
+
+
+>>>>>>> branch1
 
 
