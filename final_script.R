@@ -90,7 +90,6 @@ for (i in 1:dim(data)[2]){
 # Transformation of variables
 ################################################
 variablesToTransform <- c("area","pop65plus","phys","beds","poors","totalincome")
-#area, pop65plus, phys,beds, poors totalincome
 
 for (i in 1:length(variablesToTransform)){
   ind <- grep(variablesToTransform[i], colnames(data), fixed=TRUE)
@@ -368,10 +367,38 @@ abline(0,1)
 print(c(bestPMSE, min(pmsevec)))
 
 ###################################################
-### GLM
-###################################################
+# GLM
+# Poisson model
+###############################################
+m1 <- glm(crm1000 ~ ., family="poisson", data=train)
+summary(m1)
+dispersiontest(m1,alt='two.sided')
+
+################################################
+# Negative binomial model
+###############################################
+m2 <- glm.nb(crm1000 ~ ., data=train)
+summary(m1)
+
+################################################
+# Predicted mean square error
+################################################
+pred1 <- predict(mm1, newdata = test, type = "response")
+pred2 <- predict(mm3, newdata = test, type = "response")
+sum((test$crm1000-pred1)^2)/dim(test)[1]
+sum((test$crm1000-pred2)^2)/dim(test)[1]
+
+pred3 <- predict(m1, newdata = test, type = "response")
+pred4 <- predict(m2, newdata = test, type = "response")
+sum((test$crm1000-pred3)^2)/dim(test)[1]
+sum((test$crm1000-pred4)^2)/dim(test)[1]
 
 
->>>>>>> branch1
+################################################
+# ANOVA
+################################################
+
+anova(m1,m2)
+
 
 
