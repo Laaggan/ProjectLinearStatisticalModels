@@ -1,6 +1,10 @@
 #setwd("~/Linj?ra statistiska modeller/Project/ProjektLinear")
-library(leaps)
 library(corrplot)
+library(leaps)
+library(ggplot2)
+library(MASS)
+library("xtable")
+library(AER)
 par(mar=c(5.1, 4.1, 4.1, 2.1))
 #################################################
 # Categorical: state, region (West=4 baseline)
@@ -31,10 +35,7 @@ data <- data[,-no_use]
 ################################################
 # Correlation
 ################################################
-no_use2 <- c(#Why do we remove "totalincome"?
-  #grep("totalincome", colnames(data)),
-  #Region is removed due to it being a categorical variable
-  grep("region", colnames(data)))
+no_use2 <- c(grep("region", colnames(data)))
 
 #Removing data that does not yield meaningful results in correlation plot
 data2 <- data[,-no_use2]
@@ -105,8 +106,7 @@ for (i in 1:length(variablesToTransform)){
 # Remove variables due to colinearity
 ################################################
 no_use3 <- c(grep("popul", colnames(data)),
-             grep("crimes", colnames(data)),
-             grep("region", colnames(data)))
+             grep("crimes", colnames(data)))
 data <- data[,-no_use3]
 
 ################################################
@@ -132,7 +132,7 @@ pMSE <- function(yHat, y){
 }
 
 #Naive model containing all variables of the dataset
-mm1 <- lm(crm1000 ~ . , data=train) #, subset=-c(292,124)
+mm1 <- lm(crm1000 ~ . , data=train, subset=-c(238,215))
 summary(mm1)
 par(mfrow=c(2,2)) 
 plot(mm1)
@@ -150,7 +150,7 @@ abline(0,1)
 
 mm2 <- step(mm1,directions="backward") # backward selection
 
-mm3 <- lm(formula(mm2), data = train)
+mm3 <- lm(formula(mm2), data = train, subset=-c(238,215))
 summary(mm3)
 par(mfrow=c(2,2)) 
 plot(mm3)
@@ -160,6 +160,14 @@ pMSE3 <- pMSE(yPred3, test$crm1000)
 par(mfrow=c(1,1))
 plot(yPred3, test$crm1000,, xlim=c(0,maxVal), ylim=c(0,maxVal))
 abline(0,1)
+
+################################################
+# Remove region because regsubsets can't handle it
+################################################
+#FIXME: this mutates another dataset and then you try to use train
+no_use4 <- c(grep("region", colnames(data)))
+data <- data[,-no_use4]
+
 
 ################################################
 # Model selection with lowest predictive MSE
@@ -253,15 +261,21 @@ print(c(bestPMSE, min(pmsevec)))
 # GLM
 # Poisson model
 ###############################################
-m1 <- glm(crm1000 ~ ., family="poisson", data=train)
-summary(m1)
-dispersiontest(m1,alt='two.sided')
+mm5 <- glm(crm1000 ~ ., family="poisson", data=train)
+summary(mm5)
+dispersiontest(mm5,alt='two.sided')
+
+mm5summary <- summary(mm5)
+xtable(mm5summary$coefficients[,-c(2,3)])
 
 ################################################
 # Negative binomial model
 ###############################################
-m2 <- glm.nb(crm1000 ~ ., data=train)
-summary(m1)
+mm6 <- glm.nb(crm1000 ~ ., data=train)
+summary(mm6)
+
+mm6summary <- summary(mm6)
+xtable(mm6summary$coefficients[,-c(2,3)])
 
 ################################################
 # Predicted mean square error
@@ -271,17 +285,39 @@ pred2 <- predict(mm3, newdata = test, type = "response")
 sum((test$crm1000-pred1)^2)/dim(test)[1]
 sum((test$crm1000-pred2)^2)/dim(test)[1]
 
-pred3 <- predict(m1, newdata = test, type = "response")
-pred4 <- predict(m2, newdata = test, type = "response")
-sum((test$crm1000-pred3)^2)/dim(test)[1]
-sum((test$crm1000-pred4)^2)/dim(test)[1]
+pred5 <- predict(mm5, newdata = test, type = "response")
+pred6 <- predict(mm6, newdata = test, type = "response")
+pMSE5 <- pMSE(pred5, test$crm1000)
+pMSE6 <- pMSE(pred6, test$crm1000)
 
 
 ################################################
 # ANOVA
 ################################################
+anova(mm5,mm6)
 
-anova(m1,m2)
+################################################
+# Backward selection for negative binomial
+################################################
+mm7 <- step(mm6, direction="backward")
+
+yPred8 <- predict(mm7, newdata = test)
+pMSE8 <- pMSE(yPred8, test$crm1000)
+
+mm8summary <- summary(mm8)
+xtable(mm8summary$coefficients[,-c(2,3)])
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
