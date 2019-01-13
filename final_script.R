@@ -107,6 +107,12 @@ for (i in 1:length(variablesToTransform)){
 ################################################
 no_use3 <- c(grep("popul", colnames(data)),
              grep("crimes", colnames(data)))
+
+no_use3 <- c(grep("popul", colnames(data)),
+             grep("crimes", colnames(data)),
+             grep("totalincome", colnames(data)),
+             grep("phys", colnames(data)))
+
 data <- data[,-no_use3]
 
 ################################################
@@ -132,8 +138,8 @@ pMSE <- function(yHat, y){
 }
 
 #Naive model containing all variables of the dataset
-mm1 <- lm(crm1000 ~ . , data=train, subset=-c(238,215))
-summary(mm1)
+mm1 <- lm(crm1000 ~ . , data=train)#, subset=-c(238,215))
+mm1sum <- summary(mm1)
 par(mfrow=c(2,2)) 
 plot(mm1)
 
@@ -145,12 +151,21 @@ plot(yPred1, test$crm1000, xlim=c(0,maxVal), ylim=c(0,maxVal))
 abline(0,1)
 
 ################################################
+# Model
+################################################
+handPickedModel <- lm(crm1000 ~ pop1834 + `log(poors)` + region + `log(beds)`, data=train)
+
+hpPred <- predict(handPickedModel, test)
+hpPredSum <- summary(handPickedModel)
+hpPMSE <- pMSE(hpPred, test$crm1000)
+
+################################################
 # Backward model selection
 ################################################
 
 mm2 <- step(mm1,directions="backward") # backward selection
 
-mm3 <- lm(formula(mm2), data = train, subset=-c(238,215))
+mm3 <- lm(formula(mm2), data = train)#, subset=-c(238,215))
 summary(mm3)
 par(mfrow=c(2,2)) 
 plot(mm3)
@@ -165,64 +180,33 @@ abline(0,1)
 # Remove region because regsubsets can't handle it
 ################################################
 #FIXME: this mutates another dataset and then you try to use train
-no_use4 <- c(grep("region", colnames(data)))
-data <- data[,-no_use4]
-
+no_use4 <- c(grep("region", colnames(train)))
+train2 <- train[,-no_use4]
+test2 <- test[,-no_use4]
 
 ################################################
 # Model selection with lowest predictive MSE
 ################################################
-crmInd <- which(colnames(train) == "crm1000")
+crmInd <- which(colnames(train2) == "crm1000")
 
-yy <- train[,crmInd]
-xx <- train[,-crmInd]
+yy <- train2[,crmInd]
+xx <- train2[,-crmInd]
 
-yyt <- test[,crmInd]
-xxt <- test[,-crmInd]
+yyt <- test2[,crmInd]
+xxt <- test2[,-crmInd]
 
 ##################################################
 #Perform exhaustive search for model
 ##################################################
-rleaps<-regsubsets(x=xx,y=yy,int=T,nbest=1000,nvmax=dim(train)[2],really.big=T,method=c("ex"))## all subset models
-cleaps<-summary(rleaps,matrix=T) ## True/False matrix. The r-th is a True/False statement about which
-## variables are included in model r.
-tt<-apply(cleaps$which,1,sum) ## size of each model in the matrix
-mses<-cleaps$rss/length(yy) ## corresponding MSEs
-##
-tt<-c(1,tt)
-nullrss<-sum((yy-mean(yy))^2)/length(yy)
-mses<-c(nullrss,mses)
-###
-par(mfrow=c(1,1))
-plot(tt,mses,xlab="number of parameters",ylab="RSS/n",main="RSS/n for all subset models")
-tmin<-min(tt)
-tmax<-max(tt)
-tsec<-seq(tmin,tmax)
-msevec<-rep(0,length(tsec))
-for (tk in 1:length(tsec)) {
-  msevec[tk]<-min(mses[tt==tsec[tk]])} ## the best model for each size
-lines(tsec,msevec,lwd=2,col=2) ## a line connecting the best models.
+rleaps<-regsubsets(x=xx,y=yy,int=T,nbest=1000,nvmax=dim(train2)[2],really.big=T,method=c("ex"))
+cleaps<-summary(rleaps,matrix=T)
 
-
-###################################################
-### code chunk number 6: l6-msefig
-###################################################
-plot(tsec,msevec,xlab="number of parameters",ylab="MSE",main="MSE for best model of each size",type='b',col=4,lwd=2)
-# Just plotting the best model of each size
-
-###################################################
-### code chunk number 7: l6-pmsefig
-###################################################
 pmses<-rep(0,dim(cleaps$which)[1])
 bestPMSE <- Inf
 for (ta in (1:dim(cleaps$which)[1])) {
-  # select covariates in training data for current model 
-  # -1 removes the intercep stored in cleaps
-  x <- as.matrix(xx[, cleaps$which[ta,-1]]) # TRAINING covariates
-  mmr <- lm(yy ~ x)  # fit training data
-  # now select same covariates in test data
-  x <- as.matrix(xxt[, cleaps$which[ta,-1]]) # TESTING covariates
-  # predict the outcome of the new data from testing covariates
+  x <- as.matrix(xx[, cleaps$which[ta,-1]])
+  mmr <- lm(yy ~ x)
+  x <- as.matrix(xxt[, cleaps$which[ta,-1]])
   yhat <- predict(mmr, as.data.frame(x))
   PEcp <- pMSE(yhat, yyt)
   pmses[ta]<-PEcp 
@@ -237,12 +221,9 @@ pmses<-c(nullpmse,pmses)
 pmsevec<-rep(0,length(tsec))
 for (tk in 1:length(tsec)) {
   pmsevec[tk]<-min(pmses[tt==tsec[tk]])}
+par(mfrow=c(1,1))
 plot(tsec,pmsevec,xlab="number of parameters",ylab="pMSE",main="prediction MSE", type="b",lwd=2,col=2)
-# best prediction model of each size
 
-###################################################
-### code chunk number 8: l6-whichwin
-###################################################
 #index of least pMSE
 ptmin<-which.min(pmses)
 ModMat<-rbind(c("TRUE",rep("FALSE",dim(cleaps$which)[2]-1)),cleaps$which)
@@ -255,7 +236,8 @@ mod<-(ModMat[tt==sum(pmod==T),])[mtmin,] # best training model of the same size 
 plot(yPred4, test$crm1000, , xlim=c(0,maxVal), ylim=c(0,maxVal))
 abline(0,1)
 
-print(c(bestPMSE, min(pmsevec)))
+mm4summary <- summary(mm4)
+xtable(mm4summary$coefficients[,-c(2,3)])
 
 ###################################################
 # GLM
@@ -304,10 +286,23 @@ mm7 <- step(mm6, direction="backward")
 yPred8 <- predict(mm7, newdata = test)
 pMSE8 <- pMSE(yPred8, test$crm1000)
 
-mm8summary <- summary(mm8)
+mm8summary <- summary(mm7)
 xtable(mm8summary$coefficients[,-c(2,3)])
 
 
+################################################
+# Final model
+################################################
+finalModel <- glm.nb(crm1000 ~ pop1834 + `log(beds)` + `log(poors)` + region, data=train)
+
+finalPred8 <- predict(finalModel, newdata = test)
+finalPMSE <- pMSE(finalPred8, test$crm1000)
+
+finalModelSummary <- summary(finalModel)
+xtable(finalModelSummary$coefficients[,-c(2,3)])
+
+par(mfrow=c(2,2))
+plot(finalModel)
 
 
 
